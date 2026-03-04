@@ -1,11 +1,10 @@
-import requests  # This was the missing line
+import requests  
 import pandas as pd
 import time
 from datetime import datetime
 import os
 
 # GPS Bounding Box for Perak, Malaysia
-# This ensures you only get planes over the state of Perak
 params = {
     'lamin': 3.6, 
     'lomin': 100.0, 
@@ -28,10 +27,10 @@ def fetch_and_save():
                 raw_data = [s[:8] for s in data['states']]
                 df = pd.DataFrame(raw_data, columns=['icao24', 'callsign', 'origin', 'time_pos', 'last_con', 'long', 'lat', 'altitude'])
                 
-                # Add a readable timestamp for your database
+                # Add a readable timestamp for database
                 df['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
-                # Save/Append to CSV (This acts as your Database)
+                # Save/Append to CSV (This acts as Database)
                 # 'a' means append, so it doesn't delete previous data
                 file_exists = os.path.isfile(FILE_NAME)
                 df.to_csv(FILE_NAME, mode='a', index=False, header=not file_exists)
@@ -56,4 +55,5 @@ print("-------------------------------------------")
 while True:
     fetch_and_save()
     # Wait 120 seconds (2 minutes) to stay within free API limits
+
     time.sleep(120)
