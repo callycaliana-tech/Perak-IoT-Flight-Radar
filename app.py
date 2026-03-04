@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import folium
-from folium.plugins import HeatMap, MarkerCluster
+from folium.plugins import HeatMap
 import os
 import requests
 
@@ -39,7 +39,7 @@ def fetch_weather(lat, lon):
 # ===============================
 if os.path.exists(FILE_NAME):
     try:
-        df = pd.read_csv(FILE_NAME, encoding='utf-8', on_bad_lines='skip')
+        df = pd.read_csv(FILE_NAME, encoding='utf-8', on_bad_lines='skip')  # skip bad lines
 
         # Standardize column names
         df.columns = [c.strip().lower() for c in df.columns]
@@ -107,7 +107,7 @@ if os.path.exists(FILE_NAME):
             m = folium.Map(location=[4.8, 101.0], zoom_start=9, tiles="OpenStreetMap")
 
             # -------------------------------
-            # TRAFFIC GLOW (ZONE BASED)
+            # TRAFFIC GLOW (ZONE BASED) ONLY IF HEATMAP
             # -------------------------------
             if enable_heatmap and not display_df.empty:
                 zone_df = display_df.copy()
@@ -139,29 +139,18 @@ if os.path.exists(FILE_NAME):
                         fill_opacity=opacity
                     ).add_to(m)
 
+                # Heatmap
                 heat_data = [[row['lat'], row['long']] for _, row in display_df.iterrows()]
                 HeatMap(heat_data, radius=20, blur=15, min_opacity=0.4).add_to(m)
 
             # -------------------------------
-            # AIRCRAFT MARKERS WITH CLUSTER & WEATHER
+            # AIRCRAFT MARKERS (WEATHER RISK)
             # -------------------------------
             risk_list = []
             weather_cache = {}
-            marker_cluster = MarkerCluster().add_to(m)
 
-            # Fetch weather only once per unique location
-            if enable_weather:
-                unique_locations = display_df[['lat','long']].drop_duplicates()
-                for _, row in unique_locations.iterrows():
-                    latlon = (round(row['lat'],2), round(row['long'],2))
-                    if latlon not in weather_cache:
-                        weather_cache[latlon] = fetch_weather(*latlon)
-
-            # Limit number of markers if weather enabled
-            if enable_weather:
-                marker_df = display_df.head(300)
-            else:
-                marker_df = display_df
+            # Always show all flights for weather risk
+            marker_df = display_df.copy() if selected_flight == "All Flights" else display_df.head(100)
 
             with st.spinner("Processing Radar & Weather Data..."):
                 for _, row in marker_df.iterrows():
@@ -169,10 +158,12 @@ if os.path.exists(FILE_NAME):
                     status = "Normal"
 
                     if enable_weather:
-                        latlon = (round(row['lat'],2), round(row['long'],2))
-                        w = weather_cache.get(latlon, {})
-                        wind = w.get('wind_speed_10m',0)
-                        rain = w.get('precipitation',0)
+                        latlon = (round(row['lat'], 2), round(row['long'], 2))
+                        if latlon not in weather_cache:
+                            weather_cache[latlon] = fetch_weather(*latlon)
+                        w = weather_cache[latlon]
+                        wind = w.get('wind_speed_10m', 0) if w else 0
+                        rain = w.get('precipitation', 0) if w else 0
 
                         if wind > 8 or rain > 0:
                             marker_color = "orange"
@@ -188,21 +179,21 @@ if os.path.exists(FILE_NAME):
                         })
 
                     folium.CircleMarker(
-                        location=[row['lat'], row['long']],
+                        location=[float(row['lat']), float(row['long'])],
                         radius=6,
                         color=marker_color,
                         fill=True,
                         fill_opacity=0.8,
                         popup=f"Flight: {row['callsign']} | Status: {status}"
-                    ).add_to(marker_cluster)
+                    ).add_to(m)
 
             # -------------------------------
-            # DISPLAY MAP
+            # MAP DISPLAY
             # -------------------------------
             st.components.v1.html(m._repr_html_(), height=600)
 
             # ===============================
-            # ALTITUDE GRAPH + DATA TABLE
+            # ALTITUDE GRAPH + DATA TABLE (EXPANDER)
             # ===============================
             with st.expander("📈 Altitude Profile & Data History Logs"):
                 if not display_df.empty:
